@@ -1,59 +1,84 @@
-# example of loading the cifar10 dataset
-from matplotlib import pyplot
-from keras.datasets import cifar10
+import numpy as np 
+import pandas as pd
+import torch
+import torch.nn.functional as F
+from torchvision import datasets,transforms
+from torch import nn
+import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras import datasets, layers, models
+import seaborn as sns
+#from tqdm.notebook import tqdm
+from tqdm import tqdm
+import pickle
 
-# load dataset
-(trainX, trainy), (testX, testy) = cifar10.load_data()
-# summarize loaded dataset
-print('Train: X=%s, y=%s' % (trainX.shape, trainy.shape))
-print('Test: X=%s, y=%s' % (testX.shape, testy.shape))
-# plot first few images
-for i in range(9):
-	# define subplot
-	pyplot.subplot(330 + 1 + i)
-	# plot raw pixel data
-	pyplot.imshow(trainX[i])
-# show the figure
-pyplot.show()
+def load_data(filename):
+    with open(filename, 'rb') as f:
+        data = pickle.load(f, encoding='bytes')
 
-# load train and test dataset
-def load_dataset():
-	# load dataset
-	(trainX, trainY), (testX, testY) = cifar10.load_data()
-	# one hot encode target values
-	trainY = tf.keras.utils.to_categorical(trainY)
-	testY = tf.keras.utils.to_categorical(testY)
-	return trainX, trainY, testX, testY
+        X, _, _ = normalize_data(data[b"data"].T)
+        y = np.array(data[b"labels"])
+        Y = np.eye(10)[y].T
+    return X, Y, y
 
-# scale pixels
-def prep_pixels(train, test):
-	# convert from integers to floats
-	train_norm = train.astype('float32')
-	test_norm = test.astype('float32')
-	# normalize to range 0-1
-	train_norm = train_norm / 255.0
-	test_norm = test_norm / 255.0
-	# return normalized images
-	return train_norm, test_norm
+def normalize_data(X, axis=1, keepdims=True):
+    X_mean = np.mean(X, axis=axis, keepdims=keepdims)
+    X_std = np.std(X, axis=axis, keepdims=keepdims)
+    X = (X - X_mean) / X_std
+    return X, X_mean, X_std
 
-def define_model():
-	
-    model = models.Sequential()
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_uniform', input_shape=(32, 32, 3)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_uniform', input_shape=(32, 32, 3)))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_uniform', padding='same'))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_uniform', padding='same'))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_uniform', padding='same'))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_uniform', padding='same'))
-    
-    return model
+def unpickle(filename):
+    with open(filename, 'rb') as f:
+        file_dict = pickle.load(f, encoding='bytes')
+    return file_dict
 
-trainX, trainY, testX, testY = load_dataset()
-train_norm, test_norm = prep_pixels(trainX, trainY)
-model = define_model()
-model.summary()
+def load_all_data(val_offset):
+
+    filename_1 = "datasets/cifar-10-batches-py/data_batch_1"
+    filename_2 = "datasets/cifar-10-batches-py/data_batch_2"
+    filename_3 = "datasets/cifar-10-batches-py/data_batch_3"
+    filename_4 = "datasets/cifar-10-batches-py/data_batch_4"
+    filename_5 = "datasets/cifar-10-batches-py/data_batch_5"
+    test_file = "datasets/cifar-10-batches-py/test_batch"
+
+    X_train1, Y_train1, y_train1 = load_data(filename_1)
+    X_train2, Y_train2, y_train2 = load_data(filename_2)
+    X_train3, Y_train3, y_train3 = load_data(filename_3)
+    X_train4, Y_train4, y_train4 = load_data(filename_4)
+    X_train5, Y_train5, y_train5 = load_data(filename_5)
+
+    X_train = np.concatenate((X_train1, X_train2, X_train3, X_train4, X_train5), axis=1)
+    Y_train = np.concatenate((Y_train1, Y_train2, Y_train3, Y_train4, Y_train5), axis=1)
+    y_train = np.concatenate((y_train1, y_train2, y_train3, y_train4, y_train5))
+    X_val = X_train[:, -val_offset:]
+    Y_val = Y_train[:, -val_offset:]
+    y_val = y_train[-val_offset:]
+    X_train = X_train[:, :-val_offset]
+    Y_train = Y_train[:, :-val_offset]
+    y_train = y_train[:-val_offset]
+
+    X_test, Y_test, y_test = load_data(test_file)
+
+    labels = unpickle('datasets/cifar-10-batches-py/batches.meta')[ b'label_names']
+
+    data = {'X_train': X_train,
+            'Y_train': Y_train,
+            'y_train': y_train,
+            'X_val': X_val,
+            'Y_val': Y_val,
+            'y_val': y_val,
+            'X_test': X_test,
+            'Y_test': Y_test,
+            'y_test': y_test}
+
+    return data, labels
+
+trainData = pd.read_csv('cifar-10/trainLabels.csv')
+trainData.head()
+
+print("Number of points:",trainData.shape[0])
+print("Number of features:",trainData.shape[1])
+print("Features:",trainData.columns.values)
+print("Number of Unique Values")
+for col in trainData:
+    print(col,":",len(trainData[col].unique()))
+plt.figure(figsize=(12,8))
